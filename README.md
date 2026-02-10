@@ -1,4 +1,4 @@
-📈** Multi-Horizon Stock Forecasting with Market Sentiment**
+** Multi-Horizon Stock Forecasting with Market Sentiment**
 
 A **Streamlit** app for multi-horizon stock price forecasting using **classical (ARIMA, SARIMA, Prophet)** and **deep learning (LSTM, GRU, Transformer)** models, combined with **live market sentiment analysis** from news articles.  
 
