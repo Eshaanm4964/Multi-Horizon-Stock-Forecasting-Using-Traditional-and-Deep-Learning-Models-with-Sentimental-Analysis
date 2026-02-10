@@ -1,0 +1,329 @@
+import streamlit as st
+import torch
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+
+# =====================
+# PAGE CONFIG
+# =====================
+st.set_page_config(
+    page_title="Multi-Horizon Stock Forecasting",
+    layout="wide"
+)
+
+# =====================
+# IMPORTS
+# =====================
+from src.sentiment import (
+    fetch_stock_news,
+    compute_sentiment_score,
+    sentiment_to_direction,
+    combine_model_sentiment 
+)
+
+from src.data_prep import (
+    fetch_data,
+    train_test_split,
+    create_sequences,
+    scale_series,
+    run_arima,
+    run_sarima,
+    run_prophet
+)
+
+from src.deep_models import (
+    LSTMModel,
+    GRUModel,
+    TransformerModel
+)
+
+from src.train import train_model
+
+# =====================
+# PREMIUM STYLING
+# =====================
+st.markdown("""
+<style>
+/* PAGE */
+.stApp {
+    background: linear-gradient(135deg, #0f1117, #111827);
+    color: #e5e7eb;
+    font-family: 'Inter', sans-serif;
+}
+
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background: #111827;
+    border-right: 1px solid #1f2937;
+}
+
+/* BUTTONS */
+.stButton > button {
+    background: linear-gradient(135deg, #16a34a, #22c55e);
+    color: white;
+    font-weight: 600;
+    border-radius: 12px;
+    height: 3em;
+    border: none;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+.stButton > button:hover {
+    background: linear-gradient(135deg, #15803d, #16a34a);
+    transform: translateY(-2px);
+}
+
+/* CARDS */
+.card {
+    background: rgba(17,24,39,0.85);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255,255,255,0.05);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    text-align:center;
+}
+
+/* HEADINGS */
+h1 { color: #22c55e; font-weight: 700; }
+h2, h3 { color: #86efac; font-weight: 600; }
+
+/* SENTIMENT BADGES */
+.sentiment {
+    font-weight: 700;
+    padding: 8px 14px;
+    border-radius: 12px;
+    display: inline-block;
+    min-width: 120px;
+}
+.positive { background: #22c55e33; color: #16a34a; }
+.negative { background: #ef444433; color: #b91c1c; }
+.neutral { background: #eab30833; color: #ca8a04; }
+
+/* DataFrame hover */
+.stDataFrame table tbody tr:hover {
+    background-color: rgba(34,197,94,0.1) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# =====================
+# HEADER
+# =====================
+st.title("📈 Multi-Horizon Stock Forecasting")
+st.markdown(
+    "<span style='color:#9ca3af'>Classical & Deep Learning models with live market sentiment</span>",
+    unsafe_allow_html=True
+)
+
+# =====================
+# SIDEBAR
+# =====================
+st.sidebar.markdown("## ⚙️ Configuration")
+st.sidebar.markdown("---")
+
+model_type = st.sidebar.selectbox(
+    "Select Model",
+    ["ARIMA", "SARIMA", "Prophet", "LSTM", "GRU", "Transformer"]
+)
+
+ticker = st.sidebar.text_input("Ticker", value="^GSPC")
+lookback = st.sidebar.slider("Lookback Window", 30, 120, 60)
+horizon = st.sidebar.slider("Forecast Horizon (days)", 1, 30, 7)
+epochs = st.sidebar.slider("Epochs (DL models)", 5, 30, 15)
+
+run_btn = st.sidebar.button("🚀 Run Forecast")
+
+# =====================
+# LIVE MARKET SENTIMENT
+# =====================
+# =====================
+# LIVE MARKET SENTIMENT
+# =====================
+st.subheader("🧠 Current Market Sentiment")
+
+# Initialize defaults
+sentiment_score = 0  # neutral
+sentiment = "Unavailable"
+direction = "Unknown"
+color = "#9ca3af"
+articles = []
+
+try:
+    articles = fetch_stock_news(ticker)
+
+    if articles:
+        sentiment_score = compute_sentiment_score(articles)
+        sentiment, direction, color = sentiment_to_direction(sentiment_score)
+except:
+    pass  # keep defaults
+
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown(f"""
+    <div class="card">
+        <h3>Market Sentiment</h3>
+        <span class="sentiment {'positive' if sentiment=='Positive' else 'negative' if sentiment=='Negative' else 'neutral'}">{sentiment}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div class="card">
+        <h3>Expected Direction</h3>
+        <span class="sentiment {'positive' if direction.startswith('Up') else 'negative' if direction.startswith('Down') else 'neutral'}">{direction}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with st.expander("📰 News Driving This Sentiment"):
+    if articles:
+        for a in articles[:5]:
+            st.write("•", a.get("title", "No title"))
+    else:
+        st.write("No news available right now.")
+
+# =====================
+# RUN PIPELINE
+# =====================
+if run_btn:
+    with st.spinner("Fetching data & running model..."):
+
+        # ---------- DATA ----------
+        df = fetch_data(ticker, "2010-01-01", "2024-12-31")
+        train_df, test_df = train_test_split(df, "2022-01-01")
+
+        # ---------- HISTORICAL CHART ----------
+        fig_hist = go.Figure()
+        fig_hist.add_trace(
+            go.Scatter(
+                x=df["Date"],
+                y=df["Close"],
+                mode="lines",
+                line=dict(color="#60a5fa", width=2)
+            )
+        )
+
+        fig_hist.update_layout(
+            template="plotly_dark",
+            height=450,
+            xaxis_title="Date",
+            yaxis_title="Price",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+
+        st.subheader("📊 Historical Price")
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+        # =====================
+        # CLASSICAL MODELS
+        # =====================
+        if model_type in ["ARIMA", "SARIMA"]:
+
+            if model_type == "ARIMA":
+                preds = run_arima(train_df["Close"].values, steps=horizon)
+            else:
+                preds = run_sarima(train_df["Close"].values, steps=horizon)
+
+            forecast_df = pd.DataFrame({
+                "Day": range(1, horizon + 1),
+                "Forecast": preds
+            })
+
+        elif model_type == "Prophet":
+            forecast = run_prophet(train_df, horizon=horizon)
+            forecast_df = forecast[["ds", "yhat"]].tail(horizon)
+            forecast_df.columns = ["Day", "Forecast"]
+
+        # =====================
+        # DEEP LEARNING MODELS
+        # =====================
+        else:
+            series = train_df["Close"].values.reshape(-1, 1)
+            series_scaled, scaler = scale_series(series)
+
+            X, y = create_sequences(series_scaled, lookback, horizon)
+
+            if model_type == "Transformer":
+                X, y = X[-1000:], y[-1000:]  # RAM safety
+
+            X = torch.tensor(X, dtype=torch.float32)
+            y = torch.tensor(y, dtype=torch.float32)
+
+            if model_type == "LSTM":
+                model = LSTMModel(horizon=horizon)
+            elif model_type == "GRU":
+                model = GRUModel(horizon=horizon)
+            else:
+                model = TransformerModel(horizon=horizon)
+
+            train_model(model, X, y, epochs=epochs, batch_size=32)
+
+            with torch.no_grad():
+                preds = model(X[-1:]).numpy().flatten()
+
+            preds = scaler.inverse_transform(preds.reshape(-1, 1)).flatten()
+
+            forecast_df = pd.DataFrame({
+                "Day": range(1, horizon + 1),
+                "Forecast": preds
+            })
+
+        # ---------- FORECAST CHART ----------
+        fig_forecast = go.Figure()
+        fig_forecast.add_trace(
+            go.Scatter(
+                x=forecast_df["Day"],
+                y=forecast_df["Forecast"],
+                mode="lines+markers",
+                line=dict(color="#22c55e", width=3, shape='spline'),
+                marker=dict(size=8)
+            )
+        )
+        # Shaded confidence area
+        fig_forecast.add_trace(
+            go.Scatter(
+                x=forecast_df["Day"],
+                y=forecast_df["Forecast"]*1.02,
+                mode='lines',
+                line=dict(width=0),
+                showlegend=False
+            )
+        )
+        fig_forecast.add_trace(
+            go.Scatter(
+                x=forecast_df["Day"],
+                y=forecast_df["Forecast"]*0.98,
+                mode='lines',
+                fill='tonexty',
+                fillcolor='rgba(34,197,94,0.1)',
+                line=dict(width=0),
+                showlegend=False
+            )
+        )
+
+        fig_forecast.update_layout(
+            template="plotly_dark",
+            height=400,
+            xaxis_title="Forecast Horizon",
+            yaxis_title="Predicted Price",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+
+        st.subheader(f"🔮 {model_type} Forecast — Next {horizon} Days")
+        st.plotly_chart(fig_forecast, use_container_width=True)
+
+        st.success("Forecast completed successfully ✅")
+
+        # ---------- COMBINE FORECAST + SENTIMENT ----------
+        final_conclusion = combine_model_sentiment(forecast_df, sentiment_score, sentiment)
+        st.subheader("📌 Combined Forecast & Sentiment")
+        st.markdown(f"""
+        <div class="card">
+            <h2 style="color:#facc15">{final_conclusion}</h2>
+        </div>
+        """, unsafe_allow_html=True)
