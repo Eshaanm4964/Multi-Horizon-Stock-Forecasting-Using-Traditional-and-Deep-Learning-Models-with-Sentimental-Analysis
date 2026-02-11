@@ -1,8 +1,7 @@
-streamlit==1.26.0
-pandas==2.1.0
-numpy==1.26.0
-plotly==5.21.0
+streamlit==1.28.0
+pandas==2.1.1
+numpy==1.26.2
+plotly==5.18.0
 torch==2.1.0
 newsapi-python==0.2.7
 vaderSentiment==3.3.2
-python-dotenv==1.0.0

@@ -3,6 +3,7 @@ import torch
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from datetime import datetime, timedelta
 
 # =====================
 # PAGE CONFIG
@@ -192,7 +193,8 @@ if run_btn:
     with st.spinner("Fetching data & running model..."):
 
         # ---------- DATA ----------
-        df = fetch_data(ticker, "2010-01-01", "2024-12-31")
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        df = fetch_data(ticker, "2010-01-01", end_date)
         train_df, test_df = train_test_split(df, "2022-01-01")
 
         # ---------- HISTORICAL CHART ----------
@@ -229,14 +231,14 @@ if run_btn:
                 preds = run_sarima(train_df["Close"].values, steps=horizon)
 
             forecast_df = pd.DataFrame({
-                "Day": range(1, horizon + 1),
+                "Date": [datetime.now() + timedelta(days=i) for i in range(1, horizon + 1)],
                 "Forecast": preds
             })
 
         elif model_type == "Prophet":
             forecast = run_prophet(train_df, horizon=horizon)
             forecast_df = forecast[["ds", "yhat"]].tail(horizon)
-            forecast_df.columns = ["Day", "Forecast"]
+            forecast_df.columns = ["Date", "Forecast"]
 
         # =====================
         # DEEP LEARNING MODELS
@@ -268,7 +270,7 @@ if run_btn:
             preds = scaler.inverse_transform(preds.reshape(-1, 1)).flatten()
 
             forecast_df = pd.DataFrame({
-                "Day": range(1, horizon + 1),
+                "Date": [datetime.now() + timedelta(days=i) for i in range(1, horizon + 1)],
                 "Forecast": preds
             })
 
@@ -276,7 +278,7 @@ if run_btn:
         fig_forecast = go.Figure()
         fig_forecast.add_trace(
             go.Scatter(
-                x=forecast_df["Day"],
+                x=forecast_df["Date"],
                 y=forecast_df["Forecast"],
                 mode="lines+markers",
                 line=dict(color="#22c55e", width=3, shape='spline'),
@@ -286,7 +288,7 @@ if run_btn:
         # Shaded confidence area
         fig_forecast.add_trace(
             go.Scatter(
-                x=forecast_df["Day"],
+                x=forecast_df["Date"],
                 y=forecast_df["Forecast"]*1.02,
                 mode='lines',
                 line=dict(width=0),
@@ -295,7 +297,7 @@ if run_btn:
         )
         fig_forecast.add_trace(
             go.Scatter(
-                x=forecast_df["Day"],
+                x=forecast_df["Date"],
                 y=forecast_df["Forecast"]*0.98,
                 mode='lines',
                 fill='tonexty',
