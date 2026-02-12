@@ -36,10 +36,16 @@ from src.data_prep import (
 from src.deep_models import (
     LSTMModel,
     GRUModel,
-    TransformerModel
+    TransformerModel,
+    LSGUModel
 )
 
 from src.train import train_model
+
+from src.advanced_models import (
+    run_lightgbm,
+    run_stacking_ensemble
+)
 
 # =====================
 # PREMIUM STYLING
@@ -124,10 +130,122 @@ st.markdown(
 st.sidebar.markdown("## ⚙️ Configuration")
 st.sidebar.markdown("---")
 
-model_type = st.sidebar.selectbox(
-    "Select Model",
-    ["ARIMA", "SARIMA", "Prophet", "LSTM", "GRU", "Transformer"]
+# Model selection
+selected_model = st.sidebar.selectbox(
+    "🤖 Select Model",
+    ["ARIMA", "SARIMA", "Prophet", "LSTM", "GRU", "Transformer", "LSGU", "LightGBM", "Stacking Ensemble"]
 )
+
+# Model Info button
+if st.sidebar.button("📋 Model Info"):
+    # Detailed information for each model
+    model_info = {
+        "ARIMA": {
+            "title": "📊 ARIMA (AutoRegressive Integrated Moving Average)",
+            "description": "A classical statistical model that analyzes time series data to identify patterns and make forecasts.",
+            "best_for": "Stocks with clear trends and relatively stable patterns",
+            "how_works": "Uses past values and forecast errors to predict future prices",
+            "pros": "• Interpretable results\n• Works well with limited data\n• Good for short-term forecasts",
+            "cons": "• Assumes linear relationships\n• Struggles with volatile markets\n• Requires stationary data"
+        },
+        "SARIMA": {
+            "title": "📈 SARIMA (Seasonal ARIMA)",
+            "description": "An extension of ARIMA that captures seasonal patterns in time series data.",
+            "best_for": "Stocks with seasonal patterns (retail, agriculture, energy)",
+            "how_works": "Adds seasonal components to ARIMA for recurring patterns",
+            "pros": "• Captures seasonal trends\n• Handles cyclical patterns\n• Better for seasonal stocks",
+            "cons": "• More complex parameters\n• Requires longer data history\n• Slower to train"
+        },
+        "Prophet": {
+            "title": "🔮 Prophet (Facebook's Forecasting Tool)",
+            "description": "A modern forecasting tool designed for business time series data.",
+            "best_for": "Stocks affected by holidays, events, and business cycles",
+            "how_works": "Decomposes time series into trend, seasonality, and holiday effects",
+            "pros": "• Automatic holiday detection\n• Handles missing data well\n• Easy to use and interpret",
+            "cons": "• Less flexible than neural networks\n• May oversimplify complex patterns\n• Facebook-specific optimizations"
+        },
+        "LSTM": {
+            "title": "🧠 LSTM (Long Short-Term Memory)",
+            "description": "A deep learning model capable of learning long-term dependencies in sequential data.",
+            "best_for": "Complex stocks with long-term patterns and memory effects",
+            "how_works": "Uses memory cells to store information over long sequences",
+            "pros": "• Captures complex non-linear patterns\n• Remembers long-term dependencies\n• State-of-the-art for sequences",
+            "cons": "• Requires lots of data\n• Computationally expensive\n• Can overfit easily"
+        },
+        "GRU": {
+            "title": "⚡ GRU (Gated Recurrent Unit)",
+            "description": "A simplified version of LSTM that's faster to train while maintaining good performance.",
+            "best_for": "When you need LSTM-like performance with faster training",
+            "how_works": "Uses update and reset gates to control information flow",
+            "pros": "• Faster training than LSTM\n• Fewer parameters\n• Good performance on many tasks",
+            "cons": "• Less expressive than LSTM\n• May miss very long patterns\n• Simpler architecture"
+        },
+        "Transformer": {
+            "title": "🎯 Transformer",
+            "description": "An attention-based neural network that revolutionized sequence modeling.",
+            "best_for": "Stocks where specific time periods are more important than others",
+            "how_works": "Uses self-attention to weigh importance of different time steps",
+            "pros": "• Parallel processing\n• Captures long-range dependencies\n• State-of-the-art performance",
+            "cons": "• Requires large datasets\n• Memory intensive\n• Complex to implement"
+        },
+        "LSGU": {
+            "title": "🚀 LSGU (LSTM-GRU Hybrid)",
+            "description": "Our custom hybrid model combining LSTM and GRU with attention mechanisms.",
+            "best_for": "Maximum accuracy on complex stock patterns",
+            "how_works": "LSTM captures long-term memory, GRU handles temporal patterns, attention focuses on important periods",
+            "pros": "• Combines strengths of multiple models\n• Attention mechanism for focus\n• Most advanced architecture",
+            "cons": "• Most complex model\n• Highest computational cost\n• Requires most data"
+        },
+        "LightGBM": {
+            "title": "💡 LightGBM (Gradient Boosting)",
+            "description": "A powerful gradient boosting model that uses technical indicators for forecasting.",
+            "best_for": "Stocks where technical analysis indicators are predictive",
+            "how_works": "Creates decision trees using features like moving averages, momentum, volatility",
+            "pros": "• Very fast training\n• Handles non-linear patterns well\n• Feature importance analysis",
+            "cons": "• Limited to provided features\n• May miss sequential patterns\n• Requires feature engineering"
+        },
+        "Stacking Ensemble": {
+            "title": "🎪 Stacking Ensemble",
+            "description": "Combines all models to leverage their individual strengths and minimize weaknesses.",
+            "best_for": "When you want the most robust and accurate predictions",
+            "how_works": "Trains a meta-model to learn optimal weights from all base model predictions",
+            "pros": "• Highest accuracy potential\n• Most robust approach\n• Automatic model selection",
+            "cons": "• Highest computational cost\n• Complex to debug\n• May be overkill for simple cases"
+        }
+    }
+    
+    info = model_info[selected_model]
+    
+    # Display model info using Streamlit components
+    st.sidebar.markdown("---")
+    
+    # Title
+    st.sidebar.markdown(f"### {info['title']}")
+    
+    # Description
+    st.sidebar.info(info['description'])
+    
+    # Best For
+    st.sidebar.markdown("**🎯 Best For:**")
+    st.sidebar.write(info['best_for'])
+    
+    # How It Works
+    st.sidebar.markdown("**⚙️ How It Works:**")
+    st.sidebar.write(info['how_works'])
+    
+    # Pros
+    st.sidebar.markdown("**✅ Pros:**")
+    for pro in info['pros'].split('\n'):
+        if pro.strip():
+            st.sidebar.write(f"• {pro.strip()}")
+    
+    # Cons
+    st.sidebar.markdown("**❌ Cons:**")
+    for con in info['cons'].split('\n'):
+        if con.strip():
+            st.sidebar.write(f"• {con.strip()}")
+    
+    st.sidebar.markdown("---")
 
 ticker = st.sidebar.text_input("Ticker", value="^GSPC")
 lookback = st.sidebar.slider("Lookback Window", 30, 120, 60)
@@ -223,9 +341,9 @@ if run_btn:
         # =====================
         # CLASSICAL MODELS
         # =====================
-        if model_type in ["ARIMA", "SARIMA"]:
+        if selected_model in ["ARIMA", "SARIMA"]:
 
-            if model_type == "ARIMA":
+            if selected_model == "ARIMA":
                 preds = run_arima(train_df["Close"].values, steps=horizon)
             else:
                 preds = run_sarima(train_df["Close"].values, steps=horizon)
@@ -235,10 +353,24 @@ if run_btn:
                 "Forecast": preds
             })
 
-        elif model_type == "Prophet":
+        elif selected_model == "Prophet":
             forecast = run_prophet(train_df, horizon=horizon)
             forecast_df = forecast[["ds", "yhat"]].tail(horizon)
             forecast_df.columns = ["Date", "Forecast"]
+
+        elif selected_model == "LightGBM":
+            preds = run_lightgbm(train_df["Close"].values, horizon=horizon, lookback=lookback)
+            forecast_df = pd.DataFrame({
+                "Date": [datetime.now() + timedelta(days=i) for i in range(1, horizon + 1)],
+                "Forecast": preds
+            })
+
+        elif selected_model == "Stacking Ensemble":
+            preds = run_stacking_ensemble(train_df["Close"].values, horizon=horizon, lookback=lookback)
+            forecast_df = pd.DataFrame({
+                "Date": [datetime.now() + timedelta(days=i) for i in range(1, horizon + 1)],
+                "Forecast": preds
+            })
 
         # =====================
         # DEEP LEARNING MODELS
@@ -249,16 +381,18 @@ if run_btn:
 
             X, y = create_sequences(series_scaled, lookback, horizon)
 
-            if model_type == "Transformer":
+            if selected_model == "Transformer":
                 X, y = X[-1000:], y[-1000:]  # RAM safety
 
             X = torch.tensor(X, dtype=torch.float32)
             y = torch.tensor(y, dtype=torch.float32)
 
-            if model_type == "LSTM":
+            if selected_model == "LSTM":
                 model = LSTMModel(horizon=horizon)
-            elif model_type == "GRU":
+            elif selected_model == "GRU":
                 model = GRUModel(horizon=horizon)
+            elif selected_model == "LSGU":
+                model = LSGUModel(horizon=horizon)
             else:
                 model = TransformerModel(horizon=horizon)
 
@@ -316,7 +450,7 @@ if run_btn:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.subheader(f"🔮 {model_type} Forecast — Next {horizon} Days")
+        st.subheader(f"🔮 {selected_model} Forecast — Next {horizon} Days")
         st.plotly_chart(fig_forecast, use_container_width=True)
 
         st.success("Forecast completed successfully ✅")
